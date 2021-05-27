@@ -19,10 +19,12 @@ namespace adgMod {
         assert(string_segments.size() > 1);
         ++served;
 
+        // check if the key is within the model bounds
         uint64_t target_int = SliceToInteger(target_x);
         if (target_int > max_key) return std::make_pair(size, size);
         if (target_int < min_key) return std::make_pair(size, size);
 
+        // binary search between segments
         uint32_t left = 0, right = (uint32_t) string_segments.size() - 1;
         while (left != right - 1) {
             uint32_t mid = (right + left) / 2;
@@ -30,16 +32,11 @@ namespace adgMod {
             else left = mid;
         }
 
-        if (target_int > string_segments[left].x2) {
-            assert(left != string_segments.size() - 2);
-            ++left;
-            target_int = string_segments[left].x;
-        }
-
+        // calculate the interval according to the selected segment
         double result = target_int * string_segments[left].k + string_segments[left].b;
         uint64_t lower = result - error > 0 ? (uint64_t) std::floor(result - error) : 0;
         uint64_t upper = (uint64_t) std::ceil(result + error);
-        assert(lower < size); // return std::make_pair(size, size);
+        if (lower >= size) return std::make_pair(size, size);
         upper = upper < size ? upper : size - 1;
 //                printf("%s %s %s\n", string_keys[lower].c_str(), string(target_x.data(), target_x.size()).c_str(), string_keys[upper].c_str());
 //                assert(target_x >= string_keys[lower] && target_x <= string_keys[upper]);
@@ -54,22 +51,25 @@ namespace adgMod {
         return error;
     }
 
+    // Actual function doing learning
     bool LearnedIndexData::Learn() {
         // FILL IN GAMMA (error)
         PLR plr = PLR(error);
 
+        // check if data if filled
         if (string_keys.empty()) assert(false);
 
-
+        // fill in some bounds for the model
         uint64_t temp = atoll(string_keys.back().c_str());
         min_key = atoll(string_keys.front().c_str());
         max_key = atoll(string_keys.back().c_str());
         size = string_keys.size();
 
-
+        // actual training
         std::vector<Segment> segs = plr.train(string_keys, !is_level);
         if (segs.empty()) return false;
-        segs.push_back((Segment) {temp, 0, 0, 0});
+        // fill in a dummy last segment (used in segment binary search)
+        segs.push_back((Segment) {temp, 0, 0});
         string_segments = std::move(segs);
 
         for (auto& str: string_segments) {
@@ -81,6 +81,8 @@ namespace adgMod {
         return true;
     }
 
+    // static learning function to be used with LevelDB background scheduling
+    // level learning
     void LearnedIndexData::Learn(void *arg) {
         Stats* instance = Stats::GetInstance();
         bool success = false;
@@ -122,6 +124,8 @@ namespace adgMod {
         delete vas;
     }
 
+    // static learning function to be used with LevelDB background scheduling
+    // file learning
     uint64_t LearnedIndexData::FileLearn(void *arg) {
         Stats* instance = Stats::GetInstance();
         bool entered = false;
@@ -164,6 +168,7 @@ namespace adgMod {
         return entered ? time.second - time.first : 0;
     }
 
+    // general model checker
     bool LearnedIndexData::Learned() {
         if (learned_not_atomic) return true;
         else if (learned.load()) {
@@ -172,6 +177,7 @@ namespace adgMod {
         } else return false;
     }
 
+    // level model checker, used to be also learning trigger
     bool LearnedIndexData::Learned(Version* version, int v_count, int level) {
         if (learned_not_atomic) return true;
         else if (learned.load()) {
@@ -186,6 +192,7 @@ namespace adgMod {
 //        }
     }
 
+    // file model checker, used to be also learning trigger
     bool LearnedIndexData::Learned(Version* version, int v_count, FileMetaData *meta, int level) {
         if (learned_not_atomic) return true;
         else if (learned.load()) {
@@ -217,7 +224,7 @@ namespace adgMod {
         output_file.precision(15);
         output_file << adgMod::block_num_entries << " " << adgMod::block_size << " " << adgMod::entry_size << "\n";
         for (Segment& item: string_segments) {
-            output_file << item.x << " " << item.k << " " << item.b << " " << item.x2 << "\n";
+            output_file << item.x << " " << item.k << " " << item.b << "\n";
         }
         output_file << "StartAcc" << " " << min_key << " " << max_key << " " << size << " " << level << " " << cost << "\n";
         for (auto& pair: num_entries_accumulated.array) {
@@ -233,11 +240,10 @@ namespace adgMod {
         while (true) {
             string x;
             double k, b;
-            uint64_t x2;
             input_file >> x;
             if (x == "StartAcc") break;
-            input_file >> k >> b >> x2;
-            string_segments.emplace_back(atoll(x.c_str()), k, b, x2);
+            input_file >> k >> b;
+            string_segments.emplace_back(atoll(x.c_str()), k, b);
         }
         input_file >> min_key >> max_key >> size >> level >> cost;
         while (true) {

@@ -76,7 +76,7 @@ GreedyPLR::process(const struct point& pt) {
         // impossible
         std::cout << "ERROR in process" << std::endl;
     }
-    Segment s = {0, 0, 0, 0};
+    Segment s = {0, 0, 0};
     return s;
 }
 
@@ -94,7 +94,7 @@ GreedyPLR::current_segment() {
     uint64_t segment_start = this->s0.x;
     double avg_slope = (this->rho_lower.a + this->rho_upper.a) / 2.0;
     double intercept = -avg_slope * this->sint.x + this->sint.y;
-    Segment s = {segment_start, avg_slope, intercept, last_pt.x};
+    Segment s = {segment_start, avg_slope, intercept};
     return s;
 }
 
@@ -115,13 +115,13 @@ GreedyPLR::process__(struct point pt) {
     if (is_above(s_lower, this->rho_lower)) {
         this->rho_lower = get_line(this->sint, s_lower);
     }
-    Segment s = {0, 0, 0, 0};
+    Segment s = {0, 0, 0};
     return s;
 }
 
 Segment
 GreedyPLR::finish() {
-    Segment s = {0, 0, 0, 0};
+    Segment s = {0, 0, 0};
     if (this->state.compare("need2") == 0) {
         this->state = "finished";
         return s;
@@ -130,7 +130,6 @@ GreedyPLR::finish() {
         s.x = this->s0.x;
         s.k = 0;
         s.b = this->s0.y;
-        s.x2 = this->last_pt.x;
         return s;
     } else if (this->state.compare("ready") == 0) {
         this->state = "finished";
